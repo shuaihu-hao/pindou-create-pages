@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>拼豆生成器</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="workspace">
+        <div class="intro">
+          <p class="eyebrow">Pindou Create · Edge v8</p>
+          <h1>把照片变成可下载的拼豆风格图</h1>
+          <p class="subtitle">上传一张清晰图片，LongCat 只判断网格档位，颜色按 MARD 221 拼豆色卡映射。</p>
+        </div>
+
+        <div class="panel">
+          <label class="dropzone" for="imageInput" id="dropzone">
+            <input id="imageInput" type="file" accept="image/png,image/jpeg,image/webp" />
+            <span class="dropIcon" aria-hidden="true">+</span>
+            <span class="dropTitle">选择图片或拖到这里</span>
+            <span class="dropHint">支持 PNG、JPG、WEBP，建议 12MB 以内</span>
+          </label>
+
+          <div class="actions">
+            <button id="generateBtn" disabled>生成拼豆图</button>
+            <button id="resetBtn" class="secondary" disabled>重新选择</button>
+          </div>
+
+          <p id="status" class="status" role="status"></p>
+        </div>
+      </section>
+
+      <section class="previewGrid" aria-label="图片预览">
+        <article class="previewBox">
+          <div class="previewHeader">
+            <span>原图</span>
+            <small id="sourceMeta">未上传</small>
+          </div>
+          <div class="imageStage" id="sourceStage">
+            <span>等待图片</span>
+          </div>
+        </article>
+
+        <article class="previewBox">
+          <div class="previewHeader">
+            <span>拼豆结果</span>
+            <a id="downloadLink" class="download hidden" download="pindou-image.png">下载</a>
+          </div>
+          <div class="imageStage resultStage" id="resultStage">
+            <span>生成后显示</span>
+          </div>
+        </article>
+      </section>
+    </main>
+
+    <script src="./mard-colors.js?v=edge-v8"></script>
+    <script src="./app.js?v=edge-v8" type="module"></script>
+  </body>
+</html>
