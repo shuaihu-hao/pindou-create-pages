@@ -63,28 +63,21 @@ async function generateImage() {
   if (!selectedFile || !selectedDataUrl) return;
 
   setLoading(true);
-  setStatus("正在调用 LongCat-2.0-Preview 生成拼豆转换规则...");
+  setStatus("正在判断拼豆图纸网格...");
   resultStage.innerHTML = "";
   downloadLink.classList.add("hidden");
 
   try {
     const base64 = selectedDataUrl.split(",")[1];
     const imageStats = await analyzeImageComplexity(selectedDataUrl);
-    const response = await fetch(`${apiBase}/api/transform`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        image: base64,
-        mimeType: selectedFile.type,
-        fileName: selectedFile.name,
-        imageStats
-      })
+    const payload = await getGridDecision({
+      image: base64,
+      mimeType: selectedFile.type,
+      fileName: selectedFile.name,
+      imageStats
     });
 
-    const payload = await response.json();
-    if (!response.ok) throw new Error(payload.error || "生成失败，请稍后再试。");
-
-    setStatus("LongCat 已返回拼豆规则，正在生成拼豆图纸...");
+    setStatus(`${payload.source === "local" ? "已使用本地规则" : "LongCat 已返回规则"}，正在生成拼豆图纸...`);
     const resultSrc = await renderPindouImage(selectedDataUrl, payload.style);
 
     resultStage.innerHTML = `<img src="${resultSrc}" alt="生成的拼豆风格图片" />`;
@@ -97,6 +90,41 @@ async function generateImage() {
   } finally {
     setLoading(false);
   }
+}
+
+async function getGridDecision(requestBody) {
+  try {
+    const response = await fetch(`${apiBase}/api/transform`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(requestBody)
+    });
+
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error || "生成失败，请稍后再试。");
+    return { ...payload, source: "longcat" };
+  } catch (error) {
+    console.warn("LongCat backend unavailable, using local grid decision.", error);
+    return {
+      source: "local",
+      style: {
+        gridSize: decideGridSizeLocally(requestBody.imageStats),
+        paletteStrategy: "adaptive"
+      }
+    };
+  }
+}
+
+function decideGridSizeLocally(stats) {
+  const score =
+    stats.edgeDensity * 2.2 +
+    Math.min(stats.colorBins / 80, 1) * 1.4 +
+    stats.subjectRatio * 0.8 +
+    Math.min(stats.contrast / 110, 1) * 0.8;
+
+  if (score < 1.25) return 25;
+  if (score < 2.55) return 50;
+  return 100;
 }
 
 function resetAll() {
