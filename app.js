@@ -7,6 +7,8 @@ const sourceStage = document.querySelector("#sourceStage");
 const resultStage = document.querySelector("#resultStage");
 const sourceMeta = document.querySelector("#sourceMeta");
 const downloadLink = document.querySelector("#downloadLink");
+const gridSizeInput = document.querySelector("#gridSizeInput");
+const sizePresetInputs = [...document.querySelectorAll('input[name="sizePreset"]')];
 const apiBase = getApiBase();
 
 let selectedFile = null;
@@ -35,6 +37,12 @@ dropzone.addEventListener("drop", (event) => {
 
 generateBtn.addEventListener("click", generateImage);
 resetBtn.addEventListener("click", resetAll);
+sizePresetInputs.forEach((input) => {
+  input.addEventListener("change", () => {
+    if (input.checked) gridSizeInput.value = input.value;
+  });
+});
+gridSizeInput.addEventListener("input", syncSizePreset);
 
 async function setSelectedFile(file) {
   if (!file.type.startsWith("image/")) {
@@ -63,11 +71,12 @@ async function generateImage() {
   if (!selectedFile || !selectedDataUrl) return;
 
   setLoading(true);
-  setStatus("正在判断拼豆图纸网格...");
+  setStatus("正在准备拼豆图纸...");
   resultStage.innerHTML = "";
   downloadLink.classList.add("hidden");
 
   try {
+    const customGrid = parseGridSizeInput();
     const base64 = selectedDataUrl.split(",")[1];
     const imageStats = await analyzeImageComplexity(selectedDataUrl);
     const payload = await getGridDecision({
@@ -77,11 +86,16 @@ async function generateImage() {
       imageStats
     });
 
-    setStatus(`${payload.source === "local" ? "已使用本地规则" : "LongCat 已返回规则"}，正在生成拼豆图纸...`);
-    const resultSrc = await renderPindouImage(selectedDataUrl, payload.style);
+    setStatus("正在生成带色号的拼豆图纸...");
+    const result = await renderPindouImage(selectedDataUrl, {
+      ...payload.style,
+      gridSize: customGrid,
+      ditherMode: getDitherMode()
+    });
 
-    resultStage.innerHTML = `<img src="${resultSrc}" alt="生成的拼豆风格图片" />`;
-    downloadLink.href = resultSrc;
+    resultStage.innerHTML = `<img src="${result.previewSrc}" alt="生成的拼豆预览图" />`;
+    downloadLink.href = result.chartSrc;
+    downloadLink.textContent = "下载图纸";
     downloadLink.classList.remove("hidden");
     setStatus("生成完成，可以下载啦。");
   } catch (error) {
@@ -90,6 +104,49 @@ async function generateImage() {
   } finally {
     setLoading(false);
   }
+}
+
+function getDitherMode() {
+  const mode = document.querySelector('input[name="ditherMode"]:checked')?.value;
+  return ["soft", "balanced", "detail"].includes(mode) ? mode : "balanced";
+}
+
+function parseGridSizeInput() {
+  const rawValue = gridSizeInput.value.trim();
+  const match = rawValue.match(/^(\d{1,3})\s*[*xX×,，\s]\s*(\d{1,3})$/);
+  if (!match) {
+    throw new Error("请按 100*100 的格式填写拼豆尺寸。");
+  }
+
+  const width = Number(match[1]);
+  const height = Number(match[2]);
+  if (!Number.isInteger(width) || !Number.isInteger(height) || width < 20 || height < 20) {
+    throw new Error("拼豆宽高不能小于 20。");
+  }
+  if (width > 100 || height > 100 || width * height > 10000) {
+    throw new Error("拼豆尺寸最高支持 100*100。");
+  }
+
+  return { width, height };
+}
+
+function syncSizePreset() {
+  const normalized = normalizeSizeValue(gridSizeInput.value);
+  let matched = false;
+  for (const input of sizePresetInputs) {
+    input.checked = input.value === normalized;
+    matched ||= input.checked;
+  }
+  if (!matched) {
+    sizePresetInputs.forEach((input) => {
+      input.checked = false;
+    });
+  }
+}
+
+function normalizeSizeValue(value) {
+  const match = value.trim().match(/^(\d{1,3})\s*[*xX×,，\s]\s*(\d{1,3})$/);
+  return match ? `${Number(match[1])}*${Number(match[2])}` : "";
 }
 
 async function getGridDecision(requestBody) {
@@ -104,7 +161,7 @@ async function getGridDecision(requestBody) {
     if (!response.ok) throw new Error(payload.error || "生成失败，请稍后再试。");
     return { ...payload, source: "longcat" };
   } catch (error) {
-    console.warn("LongCat backend unavailable, using local grid decision.", error);
+    console.warn("Remote grid decision unavailable, using local fallback.", error);
     return {
       source: "local",
       style: {
@@ -177,53 +234,39 @@ function formatBytes(bytes) {
 
 async function renderPindouImage(dataUrl, style = {}) {
   const image = await loadImage(dataUrl);
-  const maxGrid = [25, 50, 100].includes(Number(style.gridSize)) ? Number(style.gridSize) : 50;
-  const grid = getGridSize(image, maxGrid);
-  const cell = maxGrid === 25 ? 28 : maxGrid === 50 ? 18 : 13;
+  const grid = getGridSize(image, style.gridSize);
+  const maxGrid = Math.max(grid.width, grid.height);
+  const cell = getChartCellSize(maxGrid);
   const header = 26;
   const titleHeight = 52;
 
-  const sampleCanvas = document.createElement("canvas");
-  const sampleCtx = sampleCanvas.getContext("2d", { willReadFrequently: true });
-  sampleCanvas.width = grid.width;
-  sampleCanvas.height = grid.height;
-  sampleCtx.imageSmoothingEnabled = true;
-  sampleCtx.drawImage(image, 0, 0, grid.width, grid.height);
-
-  const source = sampleCtx.getImageData(0, 0, grid.width, grid.height);
+  const sourceImage = readSourceImage(image);
+  const ditherMode = ["soft", "balanced", "detail"].includes(style.ditherMode) ? style.ditherMode : "balanced";
+  const rawSource = buildRepresentativeGrid(sourceImage, grid);
+  const flatArtwork = isFlatArtwork(rawSource, grid);
+  const source = flatArtwork ? rawSource : enhanceColorGrid(rawSource, grid, ditherMode);
   const cornerColor = getCornerColor(source, grid.width, grid.height);
   const palette = buildMardPalette();
-  const outlineBead = getOutlineBead(palette);
   const legendHeight = 210;
   const chartWidth = header * 2 + grid.width * cell;
   const chartHeight = titleHeight + header * 2 + grid.height * cell + legendHeight;
   const cells = [];
   const counts = new Map();
 
-  for (let y = 0; y < grid.height; y += 1) {
-    for (let x = 0; x < grid.width; x += 1) {
-      const index = (y * grid.width + x) * 4;
-      const color = {
-        r: source.data[index],
-        g: source.data[index + 1],
-        b: source.data[index + 2],
-        a: source.data[index + 3]
-      };
-      const blank = isBackgroundCell(color, cornerColor);
-      const bead = blank
-        ? null
-        : chooseBeadForCell(color, palette, outlineBead, source, grid, x, y, cornerColor);
-      cells.push(bead);
-      if (bead) counts.set(bead.code, (counts.get(bead.code) || 0) + 1);
-    }
+  const quantized = flatArtwork
+    ? quantizeGridConsistently(source, grid, palette, cornerColor)
+    : quantizeGridWithErrorDiffusion(source, grid, palette, cornerColor, maxGrid, ditherMode);
+  cells.push(...quantized.cells);
+  for (const bead of cells) {
+    if (bead) counts.set(bead.code, (counts.get(bead.code) || 0) + 1);
   }
 
-  const canvas = document.createElement("canvas");
-  const ctx = canvas.getContext("2d");
-  canvas.width = chartWidth;
-  canvas.height = chartHeight;
+  const chartCanvas = document.createElement("canvas");
+  const chartCtx = chartCanvas.getContext("2d");
+  chartCanvas.width = chartWidth;
+  chartCanvas.height = chartHeight;
 
-  drawPatternSheet(ctx, {
+  drawPatternSheet(chartCtx, {
     cells,
     counts,
     palette,
@@ -236,7 +279,10 @@ async function renderPindouImage(dataUrl, style = {}) {
     legendHeight
   });
 
-  return canvas.toDataURL("image/png");
+  return {
+    chartSrc: chartCanvas.toDataURL("image/png"),
+    previewSrc: drawPindouPreview(cells, grid, maxGrid)
+  };
 }
 
 function loadImage(src) {
@@ -246,6 +292,328 @@ function loadImage(src) {
     image.onerror = reject;
     image.src = src;
   });
+}
+
+function readSourceImage(image) {
+  const width = image.naturalWidth || image.width;
+  const height = image.naturalHeight || image.height;
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  canvas.width = width;
+  canvas.height = height;
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(image, 0, 0, width, height);
+  return {
+    data: ctx.getImageData(0, 0, width, height),
+    width,
+    height
+  };
+}
+
+function buildRepresentativeGrid(sourceImage, grid) {
+  const data = new Uint8ClampedArray(grid.width * grid.height * 4);
+  for (let y = 0; y < grid.height; y += 1) {
+    for (let x = 0; x < grid.width; x += 1) {
+      const color = sampleCellColor(sourceImage, grid, x, y);
+      const index = (y * grid.width + x) * 4;
+      data[index] = color.r;
+      data[index + 1] = color.g;
+      data[index + 2] = color.b;
+      data[index + 3] = color.a;
+    }
+  }
+  return { data, width: grid.width, height: grid.height };
+}
+
+function sampleCellColor(sourceImage, grid, cellX, cellY) {
+  const { data, width, height } = sourceImage;
+  const x0 = Math.floor((cellX * width) / grid.width);
+  const x1 = Math.min(width, Math.max(x0 + 1, Math.ceil(((cellX + 1) * width) / grid.width)));
+  const y0 = Math.floor((cellY * height) / grid.height);
+  const y1 = Math.min(height, Math.max(y0 + 1, Math.ceil(((cellY + 1) * height) / grid.height)));
+  const area = Math.max(1, (x1 - x0) * (y1 - y0));
+  const stride = Math.max(1, Math.floor(Math.sqrt(area / 80)));
+  const samples = [];
+
+  for (let y = y0; y < y1; y += stride) {
+    for (let x = x0; x < x1; x += stride) {
+      const index = (y * width + x) * 4;
+      const a = data.data[index + 3];
+      if (a < 20) continue;
+      const color = {
+        r: data.data[index],
+        g: data.data[index + 1],
+        b: data.data[index + 2],
+        a
+      };
+      samples.push({
+        color,
+        luminance: getLuminance(color)
+      });
+    }
+  }
+
+  if (!samples.length) return { r: 255, g: 255, b: 255, a: 0 };
+
+  samples.sort((a, b) => a.luminance - b.luminance);
+  const trim = samples.length > 18 ? Math.floor(samples.length * 0.1) : 0;
+  const kept = samples.slice(trim, samples.length - trim);
+  const mid = kept[Math.floor(kept.length / 2)].color;
+  const total = kept.reduce(
+    (sum, sample) => {
+      const weight = sample.color.a / 255;
+      sum.r += srgbToLinear(sample.color.r) * weight;
+      sum.g += srgbToLinear(sample.color.g) * weight;
+      sum.b += srgbToLinear(sample.color.b) * weight;
+      sum.a += sample.color.a;
+      sum.weight += weight;
+      return sum;
+    },
+    { r: 0, g: 0, b: 0, a: 0, weight: 0 }
+  );
+
+  const weight = Math.max(total.weight, 0.0001);
+  const mean = {
+    r: linearToSrgb(total.r / weight),
+    g: linearToSrgb(total.g / weight),
+    b: linearToSrgb(total.b / weight)
+  };
+  return {
+    r: Math.round(mean.r * 0.72 + mid.r * 0.28),
+    g: Math.round(mean.g * 0.72 + mid.g * 0.28),
+    b: Math.round(mean.b * 0.72 + mid.b * 0.28),
+    a: Math.round(total.a / kept.length)
+  };
+}
+
+function enhanceColorGrid(source, grid, mode) {
+  const params = getModeParams(mode);
+  const data = new Uint8ClampedArray(source.data.length);
+  for (let y = 0; y < grid.height; y += 1) {
+    for (let x = 0; x < grid.width; x += 1) {
+      const index = (y * grid.width + x) * 4;
+      const color = getPixel(source, grid.width, x, y);
+      const localAverage = getLocalAverageColor(source, grid, x, y);
+      const sharpened = {
+        r: color.r + (color.r - localAverage.r) * params.sharpness,
+        g: color.g + (color.g - localAverage.g) * params.sharpness,
+        b: color.b + (color.b - localAverage.b) * params.sharpness,
+        a: color.a
+      };
+      const adjusted = boostSaturationAndContrast(sharpened, params);
+      data[index] = adjusted.r;
+      data[index + 1] = adjusted.g;
+      data[index + 2] = adjusted.b;
+      data[index + 3] = color.a;
+    }
+  }
+  return { data, width: source.width, height: source.height };
+}
+
+function getLocalAverageColor(source, grid, x, y) {
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  let count = 0;
+
+  for (let ny = y - 1; ny <= y + 1; ny += 1) {
+    for (let nx = x - 1; nx <= x + 1; nx += 1) {
+      if (nx < 0 || ny < 0 || nx >= grid.width || ny >= grid.height) continue;
+      const color = getPixel(source, grid.width, nx, ny);
+      r += color.r;
+      g += color.g;
+      b += color.b;
+      count += 1;
+    }
+  }
+
+  return {
+    r: r / Math.max(1, count),
+    g: g / Math.max(1, count),
+    b: b / Math.max(1, count)
+  };
+}
+
+function boostSaturationAndContrast(color, params) {
+  const hsl = rgbToHsl(color);
+  const boosted = hslToRgb({
+    h: hsl.h,
+    s: Math.min(1, hsl.s * params.saturation),
+    l: Math.max(0, Math.min(1, 0.5 + (hsl.l - 0.5) * params.contrast))
+  });
+  return clampColor({ ...boosted, a: color.a });
+}
+
+function isFlatArtwork(source, grid) {
+  const cornerColor = getCornerColor(source, grid.width, grid.height);
+  const bins = new Map();
+  let filled = 0;
+
+  for (let y = 0; y < grid.height; y += 1) {
+    for (let x = 0; x < grid.width; x += 1) {
+      const color = getPixel(source, grid.width, x, y);
+      if (isBackgroundCell(color, cornerColor)) continue;
+      filled += 1;
+      const key = getConsistentColorKey(color, 18);
+      bins.set(key, (bins.get(key) || 0) + 1);
+    }
+  }
+
+  if (filled < 12) return true;
+
+  const counts = [...bins.values()].sort((a, b) => b - a);
+  const dominant = counts.slice(0, 4).reduce((sum, count) => sum + count, 0);
+  const dominantRatio = dominant / filled;
+  return bins.size <= 18 || dominantRatio > 0.86;
+}
+
+function quantizeGridConsistently(source, grid, palette, cornerColor) {
+  const cells = new Array(grid.width * grid.height);
+  const cache = new Map();
+  const dominant = getDominantFlatArtworkColor(source, grid, cornerColor);
+  const dominantBead = dominant ? nearestPaletteColor(dominant, palette) : null;
+
+  for (let y = 0; y < grid.height; y += 1) {
+    for (let x = 0; x < grid.width; x += 1) {
+      const index = y * grid.width + x;
+      const color = getPixel(source, grid.width, x, y);
+      if (isBackgroundCell(color, cornerColor)) {
+        cells[index] = null;
+        continue;
+      }
+
+      if (dominantBead && colorDistance(color, dominant) < 58) {
+        cells[index] = dominantBead;
+        continue;
+      }
+
+      const key = getConsistentColorKey(color, 18);
+      if (!cache.has(key)) {
+        cache.set(key, nearestPaletteColor(color, palette));
+      }
+      cells[index] = cache.get(key);
+    }
+  }
+
+  return { cells };
+}
+
+function getDominantFlatArtworkColor(source, grid, cornerColor) {
+  const groups = new Map();
+
+  for (let y = 0; y < grid.height; y += 1) {
+    for (let x = 0; x < grid.width; x += 1) {
+      const color = getPixel(source, grid.width, x, y);
+      if (isBackgroundCell(color, cornerColor)) continue;
+      const key = getConsistentColorKey(color, 26);
+      const group = groups.get(key) || { r: 0, g: 0, b: 0, count: 0 };
+      group.r += color.r;
+      group.g += color.g;
+      group.b += color.b;
+      group.count += 1;
+      groups.set(key, group);
+    }
+  }
+
+  const dominant = [...groups.values()].sort((a, b) => b.count - a.count)[0];
+  if (!dominant) return null;
+  return {
+    r: dominant.r / dominant.count,
+    g: dominant.g / dominant.count,
+    b: dominant.b / dominant.count
+  };
+}
+
+function getConsistentColorKey(color, step) {
+  return [
+    Math.round(color.r / step),
+    Math.round(color.g / step),
+    Math.round(color.b / step)
+  ].join("-");
+}
+
+function quantizeGridWithErrorDiffusion(source, grid, palette, cornerColor, maxGrid, mode) {
+  const work = [];
+  const cells = new Array(grid.width * grid.height);
+  const params = getModeParams(mode);
+  const ditherStrength = params.ditherStrength * (maxGrid >= 100 ? 1 : maxGrid >= 50 ? 0.86 : 0.68);
+
+  for (let y = 0; y < grid.height; y += 1) {
+    for (let x = 0; x < grid.width; x += 1) {
+      const color = getPixel(source, grid.width, x, y);
+      work.push({ r: color.r, g: color.g, b: color.b, a: color.a });
+    }
+  }
+
+  for (let y = 0; y < grid.height; y += 1) {
+    const leftToRight = y % 2 === 0;
+    for (let step = 0; step < grid.width; step += 1) {
+      const x = leftToRight ? step : grid.width - 1 - step;
+      const index = y * grid.width + x;
+      const color = clampColor(work[index]);
+
+      if (isBackgroundCell(color, cornerColor)) {
+        cells[index] = null;
+        continue;
+      }
+
+      const bead = nearestPaletteColor(color, palette);
+      cells[index] = bead;
+      const error = {
+        r: (color.r - bead.r) * ditherStrength,
+        g: (color.g - bead.g) * ditherStrength,
+        b: (color.b - bead.b) * ditherStrength
+      };
+
+      diffuseErrorByMode(work, grid, x, y, error, cornerColor, leftToRight, mode);
+    }
+  }
+
+  return { cells };
+}
+
+function getModeParams(mode) {
+  if (mode === "soft") {
+    return { sharpness: 0.14, saturation: 1.05, contrast: 1.02, ditherStrength: 0.34 };
+  }
+  if (mode === "detail") {
+    return { sharpness: 0.32, saturation: 1.14, contrast: 1.08, ditherStrength: 0.62 };
+  }
+  return { sharpness: 0.22, saturation: 1.09, contrast: 1.04, ditherStrength: 0.44 };
+}
+
+function diffuseErrorByMode(work, grid, x, y, error, cornerColor, leftToRight, mode) {
+  const direction = leftToRight ? 1 : -1;
+  if (mode === "soft") {
+    diffuseError(work, grid, x + direction, y, error, 1 / 8, cornerColor);
+    diffuseError(work, grid, x + direction * 2, y, error, 1 / 8, cornerColor);
+    diffuseError(work, grid, x - direction, y + 1, error, 1 / 8, cornerColor);
+    diffuseError(work, grid, x, y + 1, error, 1 / 8, cornerColor);
+    diffuseError(work, grid, x + direction, y + 1, error, 1 / 8, cornerColor);
+    diffuseError(work, grid, x, y + 2, error, 1 / 8, cornerColor);
+    return;
+  }
+
+  if (mode === "detail") {
+    diffuseError(work, grid, x + direction, y, error, 7 / 16, cornerColor);
+    diffuseError(work, grid, x - direction, y + 1, error, 3 / 16, cornerColor);
+    diffuseError(work, grid, x, y + 1, error, 5 / 16, cornerColor);
+    diffuseError(work, grid, x + direction, y + 1, error, 1 / 16, cornerColor);
+    return;
+  }
+
+  diffuseError(work, grid, x + direction, y, error, 2 / 4, cornerColor);
+  diffuseError(work, grid, x - direction, y + 1, error, 1 / 4, cornerColor);
+  diffuseError(work, grid, x, y + 1, error, 1 / 4, cornerColor);
+}
+
+function diffuseError(work, grid, x, y, error, factor, cornerColor) {
+  if (x < 0 || y < 0 || x >= grid.width || y >= grid.height) return;
+  const index = y * grid.width + x;
+  if (isBackgroundCell(work[index], cornerColor)) return;
+  work[index].r += error.r * factor;
+  work[index].g += error.g * factor;
+  work[index].b += error.b * factor;
 }
 
 async function analyzeImageComplexity(dataUrl) {
@@ -313,12 +681,8 @@ function nearestPaletteColor(color, palette) {
   let best = palette[0];
   let bestDistance = Number.POSITIVE_INFINITY;
   const lab = rgbToLab(color);
-  const hsl = rgbToHsl(color);
   for (const candidate of palette) {
-    const candidateHsl = candidate.hsl;
-    const huePenalty = hsl.s > 0.18 && candidateHsl.s > 0.18 ? hueDistance(hsl.h, candidateHsl.h) * 18 : 0;
-    const saturationPenalty = Math.abs(hsl.s - candidateHsl.s) * 8;
-    const distance = labDistance(lab, candidate.lab) + huePenalty + saturationPenalty;
+    const distance = ciede2000(lab, candidate.lab);
     if (distance < bestDistance) {
       bestDistance = distance;
       best = candidate;
@@ -340,8 +704,15 @@ function buildMardPalette() {
   }));
 }
 
-function getGridSize(image, maxGrid) {
-  const longSide = [25, 50, 100].includes(Number(maxGrid)) ? Number(maxGrid) : 50;
+function getGridSize(image, requestedGrid) {
+  if (requestedGrid && Number.isInteger(requestedGrid.width) && Number.isInteger(requestedGrid.height)) {
+    return {
+      width: requestedGrid.width,
+      height: requestedGrid.height
+    };
+  }
+
+  const longSide = [25, 50, 100, 150, 200].includes(Number(requestedGrid)) ? Number(requestedGrid) : 100;
   const aspect = image.width / image.height;
   if (aspect >= 1) {
     return {
@@ -355,79 +726,12 @@ function getGridSize(image, maxGrid) {
   };
 }
 
-function chooseBeadForCell(color, palette, outlineBead, source, grid, x, y, cornerColor) {
-  if (
-    outlineBead &&
-    (isLikelyOutline(color, source, grid, x, y, cornerColor) ||
-      isBoundaryAntialias(color, source, grid, x, y, cornerColor))
-  ) {
-    return outlineBead;
-  }
-  return nearestPaletteColor(color, palette);
-}
-
-function isLikelyOutline(color, source, grid, x, y, cornerColor) {
-  const luminance = getLuminance(color);
-  const hsl = rgbToHsl(color);
-  const isNeutralDark = hsl.s < 0.22 && luminance < 78;
-  if (isNeutralDark) return true;
-  if (hsl.s > 0.28 && luminance > 52) return false;
-  if (luminance > 145) return false;
-
-  let maxContrast = 0;
-  const neighbors = [
-    [x - 1, y],
-    [x + 1, y],
-    [x, y - 1],
-    [x, y + 1]
-  ];
-
-  for (const [nx, ny] of neighbors) {
-    if (nx < 0 || ny < 0 || nx >= grid.width || ny >= grid.height) continue;
-    const neighbor = getPixel(source, grid.width, nx, ny);
-    if (isBackgroundCell(neighbor, cornerColor)) {
-      maxContrast = Math.max(maxContrast, 80);
-    } else {
-      maxContrast = Math.max(maxContrast, Math.abs(luminance - getLuminance(neighbor)));
-    }
-  }
-
-  return maxContrast > 58 && luminance < 105 && hsl.s < 0.38;
-}
-
-function isBoundaryAntialias(color, source, grid, x, y, cornerColor) {
-  const hsl = rgbToHsl(color);
-  const luminance = getLuminance(color);
-  let backgroundNeighbors = 0;
-  let subjectNeighbors = 0;
-
-  for (let ny = y - 1; ny <= y + 1; ny += 1) {
-    for (let nx = x - 1; nx <= x + 1; nx += 1) {
-      if (nx === x && ny === y) continue;
-      if (nx < 0 || ny < 0 || nx >= grid.width || ny >= grid.height) {
-        backgroundNeighbors += 1;
-        continue;
-      }
-
-      const neighbor = getPixel(source, grid.width, nx, ny);
-      if (isBackgroundCell(neighbor, cornerColor)) {
-        backgroundNeighbors += 1;
-      } else {
-        subjectNeighbors += 1;
-      }
-    }
-  }
-
-  if (backgroundNeighbors === 0 || subjectNeighbors === 0) return false;
-
-  const nearBackground = colorDistance(color, cornerColor) < 92;
-  const mutedEdge = hsl.s < 0.42 && luminance < 205;
-  const darkEdge = luminance < 135;
-  return nearBackground || mutedEdge || darkEdge;
-}
-
-function getOutlineBead(palette) {
-  return palette.reduce((darkest, color) => (getLuminance(color) < getLuminance(darkest) ? color : darkest), palette[0]);
+function getChartCellSize(maxGrid) {
+  if (maxGrid <= 25) return 28;
+  if (maxGrid <= 50) return 18;
+  if (maxGrid <= 100) return 13;
+  if (maxGrid <= 150) return 11;
+  return 10;
 }
 
 function getPixel(source, width, x, y) {
@@ -475,16 +779,96 @@ function drawPatternSheet(ctx, options) {
   drawLegend(ctx, palette, counts, header, gridY + gridHeight + header, chartWidth);
 }
 
+function drawPindouPreview(cells, grid, maxGrid) {
+  const cell = maxGrid >= 100 ? 12 : maxGrid >= 50 ? 16 : 22;
+  const gap = maxGrid >= 150 ? 1 : 2;
+  const width = grid.width * cell;
+  const height = grid.height * cell;
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d");
+  canvas.width = width;
+  canvas.height = height;
+  ctx.fillStyle = "#f8faf7";
+  ctx.fillRect(0, 0, width, height);
+
+  for (let y = 0; y < grid.height; y += 1) {
+    for (let x = 0; x < grid.width; x += 1) {
+      const bead = cells[y * grid.width + x];
+      if (!bead) continue;
+      const px = x * cell;
+      const py = y * cell;
+      ctx.fillStyle = bead.hex;
+      ctx.fillRect(px + gap / 2, py + gap / 2, cell - gap, cell - gap);
+    }
+  }
+
+  drawPreviewGrid(ctx, grid, cell, width, height);
+  drawPreviewCodes(ctx, cells, grid, cell);
+  return canvas.toDataURL("image/png");
+}
+
+function drawPreviewCodes(ctx, cells, grid, cell) {
+  ctx.save();
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.font = `700 ${Math.max(5, Math.floor(cell * 0.36))}px ui-monospace, SFMono-Regular, Menlo, monospace`;
+
+  for (let y = 0; y < grid.height; y += 1) {
+    for (let x = 0; x < grid.width; x += 1) {
+      const bead = cells[y * grid.width + x];
+      if (!bead) continue;
+      ctx.fillStyle = readableTextColor(bead);
+      ctx.fillText(bead.code, x * cell + cell / 2, y * cell + cell / 2);
+    }
+  }
+
+  ctx.restore();
+}
+
+function drawPreviewGrid(ctx, grid, cell, width, height) {
+  ctx.save();
+  for (let x = 0; x <= grid.width; x += 1) {
+    const px = x * cell + 0.5;
+    ctx.beginPath();
+    ctx.moveTo(px, 0);
+    ctx.lineTo(px, height);
+    setPreviewGridStroke(ctx, x);
+    ctx.stroke();
+  }
+  for (let y = 0; y <= grid.height; y += 1) {
+    const py = y * cell + 0.5;
+    ctx.beginPath();
+    ctx.moveTo(0, py);
+    ctx.lineTo(width, py);
+    setPreviewGridStroke(ctx, y);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function setPreviewGridStroke(ctx, index) {
+  if (index % 10 === 0) {
+    ctx.strokeStyle = "rgba(31, 36, 32, 0.42)";
+    ctx.lineWidth = 1.2;
+  } else if (index % 5 === 0) {
+    ctx.strokeStyle = "rgba(31, 36, 32, 0.28)";
+    ctx.lineWidth = 1;
+  } else {
+    ctx.strokeStyle = "rgba(31, 36, 32, 0.12)";
+    ctx.lineWidth = 0.8;
+  }
+}
+
 function drawTitle(ctx, grid, chartWidth) {
   ctx.fillStyle = "#a6a9ac";
   ctx.font = "34px ui-monospace, SFMono-Regular, Menlo, monospace";
   ctx.textAlign = "left";
   ctx.textBaseline = "middle";
-  ctx.fillText(`Pindou Pattern (${grid.width}x${grid.height})`, 20, 28);
+  ctx.fillText(`拼豆图纸 ${grid.width}x${grid.height}`, 20, 28);
   ctx.fillStyle = "#d7dadd";
   ctx.font = "14px ui-monospace, SFMono-Regular, Menlo, monospace";
   ctx.textAlign = "right";
-  ctx.fillText("LongCat assisted", chartWidth - 20, 31);
+  ctx.fillText("色号图", chartWidth - 20, 31);
 }
 
 function drawHeaderBands(ctx, gridX, gridY, grid, cell, header) {
@@ -660,6 +1044,79 @@ function hueDistance(a, b) {
   return Math.min(distance, 1 - distance);
 }
 
+function ciede2000(lab1, lab2) {
+  const deg360 = 360;
+  const deg180 = 180;
+  const pow25To7 = 25 ** 7;
+  const c1 = Math.sqrt(lab1.a ** 2 + lab1.b ** 2);
+  const c2 = Math.sqrt(lab2.a ** 2 + lab2.b ** 2);
+  const cBar = (c1 + c2) / 2;
+  const g = 0.5 * (1 - Math.sqrt(cBar ** 7 / (cBar ** 7 + pow25To7)));
+  const a1Prime = lab1.a * (1 + g);
+  const a2Prime = lab2.a * (1 + g);
+  const c1Prime = Math.sqrt(a1Prime ** 2 + lab1.b ** 2);
+  const c2Prime = Math.sqrt(a2Prime ** 2 + lab2.b ** 2);
+  const h1Prime = getLabHue(a1Prime, lab1.b);
+  const h2Prime = getLabHue(a2Prime, lab2.b);
+
+  const deltaLPrime = lab2.l - lab1.l;
+  const deltaCPrime = c2Prime - c1Prime;
+  let deltaHPrime = 0;
+  if (c1Prime * c2Prime !== 0) {
+    if (Math.abs(h2Prime - h1Prime) <= deg180) {
+      deltaHPrime = h2Prime - h1Prime;
+    } else if (h2Prime <= h1Prime) {
+      deltaHPrime = h2Prime - h1Prime + deg360;
+    } else {
+      deltaHPrime = h2Prime - h1Prime - deg360;
+    }
+  }
+  const deltaBigHPrime =
+    2 * Math.sqrt(c1Prime * c2Prime) * Math.sin(degreesToRadians(deltaHPrime / 2));
+
+  const lBarPrime = (lab1.l + lab2.l) / 2;
+  const cBarPrime = (c1Prime + c2Prime) / 2;
+  const hBarPrime = averageHue(h1Prime, h2Prime, c1Prime, c2Prime);
+  const t =
+    1 -
+    0.17 * Math.cos(degreesToRadians(hBarPrime - 30)) +
+    0.24 * Math.cos(degreesToRadians(2 * hBarPrime)) +
+    0.32 * Math.cos(degreesToRadians(3 * hBarPrime + 6)) -
+    0.2 * Math.cos(degreesToRadians(4 * hBarPrime - 63));
+  const deltaTheta = 30 * Math.exp(-(((hBarPrime - 275) / 25) ** 2));
+  const rC = 2 * Math.sqrt(cBarPrime ** 7 / (cBarPrime ** 7 + pow25To7));
+  const sL = 1 + (0.015 * (lBarPrime - 50) ** 2) / Math.sqrt(20 + (lBarPrime - 50) ** 2);
+  const sC = 1 + 0.045 * cBarPrime;
+  const sH = 1 + 0.015 * cBarPrime * t;
+  const rT = -Math.sin(degreesToRadians(2 * deltaTheta)) * rC;
+  const lTerm = deltaLPrime / sL;
+  const cTerm = deltaCPrime / sC;
+  const hTerm = deltaBigHPrime / sH;
+
+  return Math.sqrt(lTerm ** 2 + cTerm ** 2 + hTerm ** 2 + rT * cTerm * hTerm);
+}
+
+function getLabHue(a, b) {
+  if (a === 0 && b === 0) return 0;
+  const angle = radiansToDegrees(Math.atan2(b, a));
+  return angle >= 0 ? angle : angle + 360;
+}
+
+function averageHue(h1, h2, c1, c2) {
+  if (c1 * c2 === 0) return h1 + h2;
+  if (Math.abs(h1 - h2) <= 180) return (h1 + h2) / 2;
+  if (h1 + h2 < 360) return (h1 + h2 + 360) / 2;
+  return (h1 + h2 - 360) / 2;
+}
+
+function degreesToRadians(degrees) {
+  return (degrees * Math.PI) / 180;
+}
+
+function radiansToDegrees(radians) {
+  return (radians * 180) / Math.PI;
+}
+
 function rgbToLab(color) {
   const [x, y, z] = rgbToXyz(color);
   const fx = pivotXyz(x / 95.047);
@@ -673,15 +1130,9 @@ function rgbToLab(color) {
 }
 
 function rgbToXyz(color) {
-  const convert = (value) => {
-    const normalized = value / 255;
-    return normalized > 0.04045
-      ? ((normalized + 0.055) / 1.055) ** 2.4
-      : normalized / 12.92;
-  };
-  const r = convert(color.r);
-  const g = convert(color.g);
-  const b = convert(color.b);
+  const r = srgbToLinear(color.r);
+  const g = srgbToLinear(color.g);
+  const b = srgbToLinear(color.b);
   return [
     (r * 0.4124 + g * 0.3576 + b * 0.1805) * 100,
     (r * 0.2126 + g * 0.7152 + b * 0.0722) * 100,
@@ -691,6 +1142,16 @@ function rgbToXyz(color) {
 
 function pivotXyz(value) {
   return value > 0.008856 ? value ** (1 / 3) : 7.787 * value + 16 / 116;
+}
+
+function srgbToLinear(value) {
+  const normalized = value / 255;
+  return normalized > 0.04045 ? ((normalized + 0.055) / 1.055) ** 2.4 : normalized / 12.92;
+}
+
+function linearToSrgb(value) {
+  const normalized = value <= 0.0031308 ? value * 12.92 : 1.055 * value ** (1 / 2.4) - 0.055;
+  return Math.max(0, Math.min(255, Math.round(normalized * 255)));
 }
 
 function getLuminance(color) {
