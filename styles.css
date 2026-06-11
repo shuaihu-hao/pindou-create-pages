@@ -72,6 +72,12 @@ h1 {
   line-height: 1.7;
 }
 
+.sizeGuide {
+  margin-top: 12px;
+  font-size: 15px;
+  line-height: 1.65;
+}
+
 .panel,
 .previewBox {
   background: rgba(255, 255, 255, 0.86);
@@ -143,6 +149,118 @@ h1 {
   grid-template-columns: 1fr auto;
   gap: 12px;
   margin-top: 16px;
+}
+
+.modeControl {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  margin-top: 12px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #eef3ed;
+}
+
+.modeControl label {
+  position: relative;
+  min-width: 0;
+}
+
+.modeControl input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.modeControl span {
+  display: grid;
+  place-items: center;
+  min-height: 38px;
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.modeControl input:checked + span {
+  color: #fff;
+  background: var(--ink);
+}
+
+.sizeControl {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.controlLabel,
+.customSizeField span {
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.sizePresetControl {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #eef3ed;
+}
+
+.sizePresetControl label {
+  position: relative;
+  min-width: 0;
+}
+
+.sizePresetControl input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.sizePresetControl span {
+  display: grid;
+  place-items: center;
+  min-height: 38px;
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.sizePresetControl input:checked + span {
+  color: #fff;
+  background: var(--ink);
+}
+
+.customSizeField {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+}
+
+.customSizeField input {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 12px;
+  color: var(--ink);
+  background: #fff;
+  font: inherit;
+  font-weight: 800;
+}
+
+.customSizeField input:focus {
+  outline: 2px solid rgba(230, 79, 56, 0.22);
+  border-color: var(--accent);
 }
 
 button,

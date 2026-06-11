@@ -10,9 +10,10 @@
     <main class="shell">
       <section class="workspace">
         <div class="intro">
-          <p class="eyebrow">Pindou Create · Fallback v9</p>
-          <h1>把照片变成可下载的拼豆风格图</h1>
-          <p class="subtitle">上传一张清晰图片，优先由 LongCat 判断网格档位，后端不可用时自动本地生成。</p>
+          <p class="eyebrow">拼豆图纸生成器</p>
+          <h1>把照片做成拼豆图纸</h1>
+          <p class="subtitle">上传图片，设置拼豆宽高和还原风格，生成带色号、色块和用量统计的拼豆图纸。</p>
+          <p class="subtitle sizeGuide">头像、小图标可用 25*25；普通照片建议 50*50；细节较多的图片建议 100*100。为保证色号清晰，尺寸最高支持 100*100。</p>
         </div>
 
         <div class="panel">
@@ -26,6 +27,42 @@
           <div class="actions">
             <button id="generateBtn" disabled>生成拼豆图</button>
             <button id="resetBtn" class="secondary" disabled>重新选择</button>
+          </div>
+
+          <div class="modeControl" aria-label="还原模式">
+            <label>
+              <input type="radio" name="ditherMode" value="soft" />
+              <span>柔和</span>
+            </label>
+            <label>
+              <input type="radio" name="ditherMode" value="balanced" checked />
+              <span>均衡</span>
+            </label>
+            <label>
+              <input type="radio" name="ditherMode" value="detail" />
+              <span>细节</span>
+            </label>
+          </div>
+
+          <div class="sizeControl">
+            <div class="sizePresetControl" aria-label="常用拼豆尺寸">
+              <label>
+                <input type="radio" name="sizePreset" value="25*25" />
+                <span>25*25</span>
+              </label>
+              <label>
+                <input type="radio" name="sizePreset" value="50*50" />
+                <span>50*50</span>
+              </label>
+              <label>
+                <input type="radio" name="sizePreset" value="100*100" checked />
+                <span>100*100</span>
+              </label>
+            </div>
+            <label class="customSizeField" for="gridSizeInput">
+              <span>自定义拼豆尺寸</span>
+              <input id="gridSizeInput" type="text" inputmode="numeric" value="100*100" placeholder="80*100" />
+            </label>
           </div>
 
           <p id="status" class="status" role="status"></p>
@@ -46,7 +83,7 @@
         <article class="previewBox">
           <div class="previewHeader">
             <span>拼豆结果</span>
-            <a id="downloadLink" class="download hidden" download="pindou-image.png">下载</a>
+            <a id="downloadLink" class="download hidden" download="pindou-pattern.png">下载图纸</a>
           </div>
           <div class="imageStage resultStage" id="resultStage">
             <span>生成后显示</span>
@@ -55,7 +92,7 @@
       </section>
     </main>
 
-    <script src="./mard-colors.js?v=fallback-v9"></script>
-    <script src="./app.js?v=fallback-v9" type="module"></script>
+    <script src="./mard-colors.js?v=pattern-v6"></script>
+    <script src="./app.js?v=pattern-v6" type="module"></script>
   </body>
 </html>
