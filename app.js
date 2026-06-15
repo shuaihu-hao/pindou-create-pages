@@ -1,5 +1,6 @@
 const imageInput = document.querySelector("#imageInput");
 const dropzone = document.querySelector("#dropzone");
+const dropPreview = document.querySelector("#dropPreview");
 const generateBtn = document.querySelector("#generateBtn");
 const resetBtn = document.querySelector("#resetBtn");
 const statusEl = document.querySelector("#status");
@@ -10,9 +11,13 @@ const downloadLink = document.querySelector("#downloadLink");
 const gridSizeInput = document.querySelector("#gridSizeInput");
 const sizePresetInputs = [...document.querySelectorAll('input[name="sizePreset"]')];
 const apiBase = getApiBase();
+const clientMode = getClientMode();
 
 let selectedFile = null;
 let selectedDataUrl = "";
+let activeChartObjectUrl = "";
+
+resetDropzoneCopy();
 
 imageInput.addEventListener("change", () => {
   const file = imageInput.files?.[0];
@@ -57,6 +62,7 @@ async function setSelectedFile(file) {
 
   selectedFile = file;
   selectedDataUrl = await readAsDataUrl(file);
+  updateDropzonePreview(file, selectedDataUrl);
   sourceStage.innerHTML = `<img src="${selectedDataUrl}" alt="上传的原图" />`;
   sourceMeta.textContent = `${file.name} · ${formatBytes(file.size)}`;
   generateBtn.disabled = false;
@@ -74,6 +80,7 @@ async function generateImage() {
   setStatus("正在准备拼豆图纸...");
   resultStage.innerHTML = "";
   downloadLink.classList.add("hidden");
+  clearDownloadUrl();
 
   try {
     const customGrid = parseGridSizeInput();
@@ -93,11 +100,21 @@ async function generateImage() {
       ditherMode: getDitherMode()
     });
 
-    resultStage.innerHTML = `<img src="${result.previewSrc}" alt="生成的拼豆预览图" />`;
+    const resultImageSrc = clientMode === "app" ? result.chartSrc : result.previewSrc;
+    resultStage.innerHTML = `<img src="${resultImageSrc}" alt="生成的拼豆图纸" />`;
     downloadLink.href = result.chartSrc;
-    downloadLink.textContent = "下载图纸";
+    activeChartObjectUrl = result.chartSrc;
+    downloadLink.textContent = clientMode === "app" ? "保存图纸" : "下载图纸";
+    if (clientMode === "app") {
+      downloadLink.target = "_blank";
+      downloadLink.rel = "noopener";
+    } else {
+      downloadLink.removeAttribute("target");
+      downloadLink.removeAttribute("rel");
+    }
     downloadLink.classList.remove("hidden");
-    setStatus("生成完成，可以下载啦。");
+    setStatus(clientMode === "app" ? "生成完成。若未直接保存，可打开后长按图片保存。" : "生成完成，可以下载啦。");
+    scrollResultIntoView();
   } catch (error) {
     resultStage.innerHTML = "<span>生成失败</span>";
     setStatus(error.message, true);
@@ -188,6 +205,7 @@ function resetAll() {
   selectedFile = null;
   selectedDataUrl = "";
   imageInput.value = "";
+  resetDropzonePreview();
   sourceStage.innerHTML = "<span>等待图片</span>";
   resultStage.innerHTML = "<span>生成后显示</span>";
   resultStage.classList.remove("loading");
@@ -195,7 +213,9 @@ function resetAll() {
   generateBtn.disabled = true;
   resetBtn.disabled = true;
   downloadLink.classList.add("hidden");
+  clearDownloadUrl();
   setStatus("");
+  scrollUploadIntoView();
 }
 
 function getApiBase() {
@@ -204,6 +224,68 @@ function getApiBase() {
     return "https://pindou-create.onrender.com";
   }
   return "";
+}
+
+function getClientMode() {
+  if (document.documentElement.dataset.clientMode) {
+    return document.documentElement.dataset.clientMode;
+  }
+  const mobileUa = /Android|iPhone|iPad|iPod|Mobile|HarmonyOS|HongMeng|Windows Phone/i.test(navigator.userAgent);
+  const mobileClientHint = navigator.userAgentData?.mobile === true;
+  const touchLayout = window.matchMedia("(pointer: coarse) and (max-width: 920px)").matches;
+  const narrowViewport = window.innerWidth <= 640;
+  return mobileUa || mobileClientHint || touchLayout || narrowViewport ? "app" : "pc";
+}
+
+function resetDropzoneCopy() {
+  if (clientMode !== "app") return;
+
+  dropzone.querySelector(".dropTitle").textContent = "上传照片";
+  dropzone.querySelector(".dropHint").textContent = "PNG、JPG、WEBP · 12MB 以内";
+  generateBtn.textContent = "生成图纸";
+  resetBtn.textContent = "重选";
+}
+
+function updateDropzonePreview(file, dataUrl) {
+  dropPreview.src = dataUrl;
+  dropPreview.classList.remove("hidden");
+  dropzone.classList.add("hasImage");
+  dropzone.querySelector(".dropTitle").textContent = clientMode === "app" ? "点击更换照片" : "点击或拖拽更换图片";
+  dropzone.querySelector(".dropHint").textContent = `${file.name} · ${formatBytes(file.size)}`;
+}
+
+function resetDropzonePreview() {
+  dropPreview.removeAttribute("src");
+  dropPreview.classList.add("hidden");
+  dropzone.classList.remove("hasImage");
+
+  if (clientMode === "app") {
+    resetDropzoneCopy();
+    return;
+  }
+
+  dropzone.querySelector(".dropTitle").textContent = "选择图片或拖到这里";
+  dropzone.querySelector(".dropHint").textContent = "支持 PNG、JPG、WEBP，建议 12MB 以内";
+}
+
+function scrollResultIntoView() {
+  if (clientMode !== "app") return;
+  resultStage.closest(".previewBox")?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function scrollUploadIntoView() {
+  if (clientMode !== "app") return;
+  dropzone.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+function clearDownloadUrl() {
+  if (activeChartObjectUrl) {
+    URL.revokeObjectURL(activeChartObjectUrl);
+    activeChartObjectUrl = "";
+  }
+  downloadLink.removeAttribute("href");
+  downloadLink.removeAttribute("target");
+  downloadLink.removeAttribute("rel");
 }
 
 function setLoading(isLoading) {
@@ -280,9 +362,21 @@ async function renderPindouImage(dataUrl, style = {}) {
   });
 
   return {
-    chartSrc: chartCanvas.toDataURL("image/png"),
+    chartSrc: await canvasToObjectUrl(chartCanvas, "image/png"),
     previewSrc: drawPindouPreview(cells, grid, maxGrid)
   };
+}
+
+function canvasToObjectUrl(canvas, type) {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        reject(new Error("图纸导出失败，请稍后再试。"));
+        return;
+      }
+      resolve(URL.createObjectURL(blob));
+    }, type);
+  });
 }
 
 function loadImage(src) {

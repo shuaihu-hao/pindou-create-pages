@@ -30,6 +30,10 @@ body {
     var(--bg);
 }
 
+.appTopbar {
+  display: none;
+}
+
 .shell {
   width: min(1180px, calc(100vw - 32px));
   margin: 0 auto;
@@ -91,6 +95,7 @@ h1 {
 }
 
 .dropzone {
+  position: relative;
   display: grid;
   place-items: center;
   min-height: 270px;
@@ -112,6 +117,16 @@ h1 {
   transform: translateY(-1px);
 }
 
+.dropPreview {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  object-fit: contain;
+  background: #fff;
+}
+
 .dropzone input {
   position: absolute;
   opacity: 0;
@@ -119,6 +134,8 @@ h1 {
 }
 
 .dropIcon {
+  position: relative;
+  z-index: 1;
   display: grid;
   place-items: center;
   width: 58px;
@@ -132,16 +149,54 @@ h1 {
 }
 
 .dropTitle {
+  position: relative;
+  z-index: 1;
   display: block;
   font-size: 18px;
   font-weight: 800;
 }
 
 .dropHint {
+  position: relative;
+  z-index: 1;
   display: block;
   margin-top: 8px;
   color: var(--muted);
   font-size: 14px;
+}
+
+.dropzone.hasImage {
+  overflow: hidden;
+  border-style: solid;
+  border-color: var(--line);
+  background: #fff;
+}
+
+.dropzone.hasImage .dropIcon {
+  display: none;
+}
+
+.dropzone.hasImage .dropTitle,
+.dropzone.hasImage .dropHint {
+  width: 100%;
+  max-width: 100%;
+  margin-inline: 0;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: #f7f8f5;
+  color: var(--ink);
+}
+
+.dropzone.hasImage .dropTitle {
+  align-self: end;
+  margin-top: 12px;
+  font-size: 14px;
+}
+
+.dropzone.hasImage .dropHint {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .actions {
@@ -420,4 +475,241 @@ button.secondary:hover {
   .actions {
     grid-template-columns: 1fr;
   }
+}
+
+html[data-client-mode="app"] body {
+  min-height: 100svh;
+  background: #f7f8f5;
+}
+
+html[data-client-mode="app"] .shell {
+  width: 100%;
+  max-width: 520px;
+  padding: 0 14px 110px;
+}
+
+html[data-client-mode="app"] .appTopbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 56px;
+  margin: 0 -14px 12px;
+  padding: max(10px, env(safe-area-inset-top)) 16px 10px;
+  border-bottom: 1px solid rgba(217, 222, 216, 0.78);
+  background: rgba(247, 248, 245, 0.94);
+  backdrop-filter: blur(14px);
+}
+
+html[data-client-mode="app"] .appTopbar span {
+  font-size: 18px;
+  font-weight: 900;
+}
+
+html[data-client-mode="app"] .appTopbar small {
+  color: var(--green);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+html[data-client-mode="app"] .workspace,
+html[data-client-mode="app"] .previewGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  margin-top: 0;
+}
+
+html[data-client-mode="app"] .intro {
+  padding: 2px 2px 0;
+}
+
+html[data-client-mode="app"] .eyebrow,
+html[data-client-mode="app"] .desktopHint {
+  display: none;
+}
+
+html[data-client-mode="app"] h1 {
+  max-width: none;
+  font-size: 28px;
+  line-height: 1.12;
+}
+
+html[data-client-mode="app"] .subtitle {
+  margin-top: 8px;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+html[data-client-mode="app"] .panel,
+html[data-client-mode="app"] .previewBox {
+  border-color: rgba(217, 222, 216, 0.9);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 8px 28px rgba(31, 36, 32, 0.08);
+}
+
+html[data-client-mode="app"] .panel {
+  padding: 12px;
+}
+
+html[data-client-mode="app"] .dropzone {
+  min-height: 168px;
+  padding: 20px 16px;
+  border-style: solid;
+  background: #fffaf7;
+}
+
+html[data-client-mode="app"] .dropzone.hasImage {
+  grid-template-rows: minmax(180px, 52vw) auto auto;
+  min-height: 0;
+  padding: 10px;
+  background: #fff;
+}
+
+html[data-client-mode="app"] .dropzone.hasImage .dropPreview {
+  position: relative;
+  inset: auto;
+  grid-row: 1;
+  height: 100%;
+  min-height: 180px;
+}
+
+html[data-client-mode="app"] .dropzone.hasImage .dropTitle {
+  grid-row: 2;
+  margin-top: 10px;
+  background: var(--ink);
+  color: #fff;
+}
+
+html[data-client-mode="app"] .dropzone.hasImage .dropHint {
+  grid-row: 3;
+  padding: 2px 4px 0;
+  background: transparent;
+}
+
+html[data-client-mode="app"] .dropzone:hover,
+html[data-client-mode="app"] .dropzone.dragover {
+  transform: none;
+}
+
+html[data-client-mode="app"] .dropIcon {
+  width: 48px;
+  height: 48px;
+  margin-bottom: 12px;
+  background: var(--accent);
+  font-size: 30px;
+}
+
+html[data-client-mode="app"] .dropTitle {
+  font-size: 17px;
+}
+
+html[data-client-mode="app"] .dropHint {
+  max-width: 240px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+html[data-client-mode="app"] .modeControl,
+html[data-client-mode="app"] .sizePresetControl {
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+html[data-client-mode="app"] .modeControl span,
+html[data-client-mode="app"] .sizePresetControl span {
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f7f8f5;
+  font-size: 14px;
+}
+
+html[data-client-mode="app"] .modeControl input:checked + span,
+html[data-client-mode="app"] .sizePresetControl input:checked + span {
+  border-color: var(--ink);
+  background: var(--ink);
+}
+
+html[data-client-mode="app"] .customSizeField {
+  grid-template-columns: 1fr;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+html[data-client-mode="app"] .customSizeField input {
+  min-height: 48px;
+  font-size: 16px;
+}
+
+html[data-client-mode="app"] .actions {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 30;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 112px;
+  gap: 10px;
+  margin: 0;
+  padding: 10px 14px max(12px, env(safe-area-inset-bottom));
+  border-top: 1px solid rgba(217, 222, 216, 0.86);
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(14px);
+}
+
+html[data-client-mode="app"] button,
+html[data-client-mode="app"] .download {
+  min-height: 50px;
+}
+
+html[data-client-mode="app"] button:hover,
+html[data-client-mode="app"] .download:hover {
+  transform: none;
+}
+
+html[data-client-mode="app"] .status {
+  margin-top: 10px;
+  font-size: 13px;
+  text-align: center;
+}
+
+html[data-client-mode="app"] .previewGrid {
+  margin-top: 12px;
+}
+
+html[data-client-mode="app"] .previewBox:first-child {
+  display: none;
+}
+
+html[data-client-mode="app"] .previewHeader {
+  min-height: 46px;
+  padding: 0 12px;
+}
+
+html[data-client-mode="app"] .previewHeader small {
+  max-width: 52%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+html[data-client-mode="app"] .download {
+  min-height: 34px;
+  padding: 0 12px;
+  font-size: 13px;
+}
+
+html[data-client-mode="app"] .imageStage {
+  min-height: auto;
+  aspect-ratio: 4 / 3;
+}
+
+html[data-client-mode="app"] .resultStage {
+  aspect-ratio: 1 / 1;
 }

@@ -4,21 +4,36 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>拼豆生成器</title>
-    <link rel="stylesheet" href="./styles.css?v=pattern-v7" />
+    <script>
+      (() => {
+        const mobileUa = /Android|iPhone|iPad|iPod|Mobile|HarmonyOS|HongMeng|Windows Phone/i.test(navigator.userAgent);
+        const mobileClientHint = navigator.userAgentData?.mobile === true;
+        const touchLayout = window.matchMedia("(pointer: coarse) and (max-width: 920px)").matches;
+        const narrowViewport = window.innerWidth <= 640;
+        document.documentElement.dataset.clientMode = mobileUa || mobileClientHint || touchLayout || narrowViewport ? "app" : "pc";
+      })();
+    </script>
+    <link rel="stylesheet" href="./styles.css?v=pattern-v8" />
   </head>
   <body>
     <main class="shell">
+      <header class="appTopbar" aria-label="移动端标题">
+        <span>拼豆图纸</span>
+        <small>照片转图纸</small>
+      </header>
+
       <section class="workspace">
         <div class="intro">
           <p class="eyebrow">拼豆图纸生成器</p>
           <h1>把照片做成拼豆图纸</h1>
           <p class="subtitle">上传图片，设置拼豆宽高和还原风格，生成带色号、色块和用量统计的拼豆图纸。</p>
-          <p class="subtitle">头像、小图标可用 25*25；普通照片建议 50*50；细节较多的图片建议 100*100。为保证色号清晰，尺寸最高支持 100*100。</p>
+          <p class="subtitle desktopHint">头像、小图标可用 25*25；普通照片建议 50*50；细节较多的图片建议 100*100。为保证色号清晰，尺寸最高支持 100*100。</p>
         </div>
 
         <div class="panel">
           <label class="dropzone" for="imageInput" id="dropzone">
             <input id="imageInput" type="file" accept="image/png,image/jpeg,image/webp" />
+            <img id="dropPreview" class="dropPreview hidden" alt="上传的原图预览" />
             <span class="dropIcon" aria-hidden="true">+</span>
             <span class="dropTitle">选择图片或拖到这里</span>
             <span class="dropHint">支持 PNG、JPG、WEBP，建议 12MB 以内</span>
@@ -93,6 +108,6 @@
     </main>
 
     <script src="./mard-colors.js?v=pattern-v6"></script>
-    <script src="./app.js?v=pattern-v6" type="module"></script>
+    <script src="./app.js?v=pattern-v8" type="module"></script>
   </body>
 </html>
