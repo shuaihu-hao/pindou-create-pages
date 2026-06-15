@@ -6,7 +6,7 @@
 
 Render:
 
-部署完成后使用 Render 返回的线上地址访问。
+https://pindou-create-pages.onrender.com/
 
 ## 功能
 
