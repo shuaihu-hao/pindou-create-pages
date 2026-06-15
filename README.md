@@ -4,9 +4,9 @@
 
 ## 在线访问
 
-GitHub Pages:
+Render:
 
-https://shuaihu-hao.github.io/pindou-create-pages/
+部署完成后使用 Render 返回的线上地址访问。
 
 ## 功能
 
@@ -45,6 +45,6 @@ http://localhost:8000
 
 ## 部署
 
-项目通过 GitHub Pages 部署，发布源为 `main` 分支根目录。
+项目通过 Render Static Site 部署，配置文件为 `render.yaml`。
 
-推送到 `main` 后，GitHub Pages 会自动更新线上页面。
+推送到 `main` 后，Render 会从 GitHub 仓库自动拉取并发布根目录中的静态文件。

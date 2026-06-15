@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: pindou-create-pages
+    runtime: static
+    repo: https://github.com/shuaihu-hao/pindou-create-pages
+    branch: main
+    buildCommand: echo "No build step required"
+    staticPublishPath: .
+    autoDeployTrigger: commit
